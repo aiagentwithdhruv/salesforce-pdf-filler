@@ -276,132 +276,46 @@ python run.py serve  # Runs on http://localhost:8100
 
 ---
 
-## Making It Live (Deployment)
+## Making It Live (Production Deployment)
 
-Once you've tested locally and it works, here's how to deploy the FastAPI server so it runs 24/7 and n8n (or any system) can call it automatically.
-
-### Option 1: Railway (Recommended for POC) — Free → $5/mo
-
-Easiest deployment. Free tier includes 500 hours/month.
-
-```bash
-# 1. Install Railway CLI
-npm install -g @railway/cli
-
-# 2. Login and deploy
-railway login
-railway init
-railway up
-
-# 3. Set environment variables in Railway dashboard
-# Add all vars from .env.example
-
-# 4. Your API is live at: https://your-app.up.railway.app
-# Update n8n HTTP Request node URL to this
-```
-
-**Cost:** Free tier (500 hrs/mo) → $5/mo for always-on
-**Pros:** Zero config, auto-deploys on git push, free SSL
+Two clear paths. Pick one.
 
 ---
 
-### Option 2: Render — Free (spins down after inactivity)
+### Path A: Already Have n8n or Any VPS? Deploy on the Same Server ($0 Extra)
 
+If you already have a server running n8n (or anything else), just add the API there. No extra cost.
+
+**Step 1: SSH into your server and clone**
 ```bash
-# 1. Create render.yaml in project root
-cat > render.yaml << 'EOF'
-services:
-  - type: web
-    name: salesforce-pdf-filler
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python run.py serve --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: SF_USERNAME
-        sync: false
-      - key: SF_PASSWORD
-        sync: false
-      - key: SF_SECURITY_TOKEN
-        sync: false
-EOF
-
-# 2. Connect GitHub repo on render.com → auto-deploys
-```
-
-**Cost:** Free (sleeps after 15 min inactivity, ~30s cold start) → $7/mo for always-on
-**Pros:** Free tier, auto-deploy from GitHub
-
----
-
-### Option 3: Docker on Any VPS — $4-6/mo (Always On, Full Control)
-
-Best for production. Works on Hetzner, DigitalOcean, Oracle Free Tier, any VPS.
-
-```dockerfile
-# Dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-EXPOSE 8100
-CMD ["python", "run.py", "serve", "--host", "0.0.0.0", "--port", "8100"]
-```
-
-```bash
-# Build and run
-docker build -t sf-pdf-filler .
-docker run -d --name sf-pdf-filler \
-  --env-file .env \
-  -v $(pwd)/templates:/app/templates \
-  -v $(pwd)/output:/app/output \
-  -p 8100:8100 \
-  --restart unless-stopped \
-  sf-pdf-filler
-```
-
-| VPS Provider | Cost | Notes |
-|-------------|------|-------|
-| **Oracle Cloud Free** | $0/mo forever | 4 ARM cores, 24GB RAM — best free option |
-| **Hetzner CAX11** | €3.79/mo (~$4) | 2 ARM cores, 4GB RAM — best budget |
-| **DigitalOcean** | $6/mo | 1 vCPU, 1GB RAM |
-| **AWS Lightsail** | $3.50/mo | 512MB RAM — tight but works |
-
----
-
-### Option 4: Modal (Serverless) — Free Tier
-
-Pay only when the API is actually called. Perfect if usage is sporadic.
-
-```bash
-pip install modal
-modal setup
-
-# Deploy as serverless function
-modal deploy src/api.py
-```
-
-**Cost:** Free tier (30 hrs/mo compute) → pay-per-request after
-**Pros:** Zero cost when idle, auto-scales
-
----
-
-### Option 5: Run on Same VPS as n8n
-
-If you already have n8n self-hosted, just run the API on the same server:
-
-```bash
-# SSH into your n8n server
 ssh root@your-server
 
-# Clone and setup
 git clone https://github.com/aiagentwithdhruv/salesforce-pdf-filler.git
 cd salesforce-pdf-filler
 pip install -r requirements.txt
-cp .env.example .env
-# Edit .env with your credentials
+```
 
-# Run with systemd (auto-restart, starts on boot)
+**Step 2: Add your Salesforce credentials**
+```bash
+cp .env.example .env
+nano .env
+# Fill in: SF_USERNAME, SF_PASSWORD, SF_SECURITY_TOKEN
+```
+
+**Step 3: Drop your PDF template**
+```bash
+# Copy your fillable PDF to the templates folder
+cp /path/to/your/form.pdf templates/
+```
+
+**Step 4: Discover PDF field names and set up mapping**
+```bash
+python run.py discover templates/form.pdf --save
+# Edit data/field_map.json to map your Salesforce fields to the PDF field names
+```
+
+**Step 5: Set up as a system service (auto-starts on boot, auto-restarts on crash)**
+```bash
 sudo tee /etc/systemd/system/sf-pdf-filler.service << 'EOF'
 [Unit]
 Description=Salesforce PDF Filler API
@@ -422,44 +336,91 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable sf-pdf-filler
 sudo systemctl start sf-pdf-filler
-
-# Now the API runs at http://localhost:8100 on the same server
-# n8n can call it directly — no external URL needed!
 ```
 
-**Cost:** $0 extra (uses your existing server)
-**Best option if you already have a VPS**
+**Step 6: Verify it's running**
+```bash
+curl http://localhost:8100/health
+# Should return: {"status": "ok", "service": "salesforce-pdf-filler"}
+```
+
+**Step 7: Connect n8n**
+- Open the n8n workflow (import `n8n/salesforce-pdf-filler-workflow.json`)
+- The HTTP Request node already points to `http://localhost:8100` — no change needed since it's on the same server
+- Add your Salesforce credentials in n8n
+- Activate the workflow
+
+**Done.** Every new Salesforce Lead auto-generates a filled PDF and emails it. Zero manual work.
 
 ---
 
-### Automation: Making It Fully Hands-Off
+### Path B: Don't Have a Server? Use Docker on a VPS ($4-6/mo)
 
-Once deployed, set up automation so PDFs are generated without any manual work:
+Get a cheap VPS, deploy with Docker, done forever.
 
-**Event-driven (real-time):**
-- n8n Salesforce Trigger → fires on every new Lead → calls API → fills PDF → emails it
-- Zero manual intervention. Activate the n8n workflow and forget.
+**Step 1: Get a VPS (pick one)**
 
-**Scheduled (batch):**
+| Provider | Cost | What You Get |
+|----------|------|-------------|
+| **Oracle Cloud Free Tier** | $0/mo forever | 4 cores, 24GB RAM (best free option) |
+| **Hetzner CAX11** | ~$4/mo | 2 cores, 4GB RAM (best budget) |
+| **DigitalOcean** | $6/mo | 1 core, 1GB RAM |
+
+**Step 2: SSH in and deploy**
 ```bash
-# Add to crontab — fill PDFs for all new leads every day at 9 AM
-crontab -e
-0 9 * * * cd /path/to/salesforce-pdf-filler && python run.py batch --since today
+ssh root@your-new-server
+
+# Install Docker (if not installed)
+curl -fsSL https://get.docker.com | sh
+
+# Clone the repo
+git clone https://github.com/aiagentwithdhruv/salesforce-pdf-filler.git
+cd salesforce-pdf-filler
+
+# Add your credentials
+cp .env.example .env
+nano .env
+
+# Drop your PDF template
+cp /path/to/your/form.pdf templates/
+
+# Build and run
+docker build -t sf-pdf-filler .
+docker run -d --name sf-pdf-filler \
+  --env-file .env \
+  -v $(pwd)/templates:/app/templates \
+  -v $(pwd)/output:/app/output \
+  -p 8100:8100 \
+  --restart unless-stopped \
+  sf-pdf-filler
 ```
 
-**Webhook (on-demand):**
-- The FastAPI server IS the webhook. Any system can POST to `/fill` and get a filled PDF back.
-- Salesforce can call it directly via Outbound Messages or Platform Events.
+**Step 3: Verify**
+```bash
+curl http://localhost:8100/health
+```
 
-### Recommended Setup
+**Step 4: Connect n8n**
+- Update the HTTP Request node URL in the n8n workflow to `http://YOUR_SERVER_IP:8100/fill/raw`
+- Add Salesforce credentials in n8n
+- Activate
 
-| Scenario | Deploy | Trigger | Cost |
-|----------|--------|---------|------|
-| **Quick POC / Demo** | Railway free | Manual / CLI | $0 |
-| **Low volume (< 50 PDFs/day)** | Render free + n8n workflow | Salesforce Trigger | $0 |
-| **Production (always on)** | Docker on VPS + n8n | Salesforce Trigger | $4-6/mo |
-| **Already have n8n VPS** | Same server (systemd) | Salesforce Trigger | $0 extra |
-| **Enterprise / high volume** | Docker + load balancer | SF Platform Events | $10-20/mo |
+---
+
+### Making It Fully Automated (Both Paths)
+
+Once deployed, choose your automation trigger:
+
+**Real-time (recommended):** Activate the n8n Salesforce Trigger → every new Lead auto-fills a PDF and emails it. Zero manual work.
+
+**Scheduled batch:** Add a cron job to process all new leads daily:
+```bash
+crontab -e
+# Every day at 9 AM
+0 9 * * * cd /root/salesforce-pdf-filler && python run.py batch --since today
+```
+
+**On-demand:** Any system can POST to `http://your-server:8100/fill` and get a filled PDF back instantly
 
 ---
 
