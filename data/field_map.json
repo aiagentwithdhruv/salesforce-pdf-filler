@@ -1,0 +1,35 @@
+{
+  "_description": "Maps Salesforce field paths to PDF form field names. Edit this to match YOUR PDF template.",
+  "_instructions": "Run 'python run.py discover templates/your_template.pdf' to see all PDF field names first.",
+  "mappings": [
+    {"sf_object": "Lead", "sf_field": "FirstName", "pdf_field": "firstName", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "LastName", "pdf_field": "lastName", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "Email", "pdf_field": "email", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "Phone", "pdf_field": "phone", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "Company", "pdf_field": "company", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "Street", "pdf_field": "address", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "City", "pdf_field": "city", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "State", "pdf_field": "state", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "PostalCode", "pdf_field": "zipCode", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "Country", "pdf_field": "country", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "Title", "pdf_field": "jobTitle", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "Description", "pdf_field": "notes", "type": "text"},
+    {"sf_object": "Lead", "sf_field": "CreatedDate", "pdf_field": "submissionDate", "type": "date"},
+    {"sf_object": "Opportunity", "sf_field": "Name", "pdf_field": "dealName", "type": "text"},
+    {"sf_object": "Opportunity", "sf_field": "Amount", "pdf_field": "dealAmount", "type": "currency"},
+    {"sf_object": "Opportunity", "sf_field": "CloseDate", "pdf_field": "closeDate", "type": "date"},
+    {"sf_object": "Opportunity", "sf_field": "StageName", "pdf_field": "dealStage", "type": "text"},
+    {"sf_object": "Contact", "sf_field": "FirstName", "pdf_field": "contactFirstName", "type": "text"},
+    {"sf_object": "Contact", "sf_field": "LastName", "pdf_field": "contactLastName", "type": "text"},
+    {"sf_object": "Contact", "sf_field": "Email", "pdf_field": "contactEmail", "type": "text"},
+    {"sf_object": "Contact", "sf_field": "Phone", "pdf_field": "contactPhone", "type": "text"},
+    {"sf_object": "Account", "sf_field": "Name", "pdf_field": "accountName", "type": "text"},
+    {"sf_object": "Account", "sf_field": "BillingCity", "pdf_field": "accountCity", "type": "text"}
+  ],
+  "defaults": {
+    "dateFormat": "YYYY-MM-DD",
+    "emptyValue": "",
+    "checkboxTrue": "Yes",
+    "checkboxFalse": "Off"
+  }
+}

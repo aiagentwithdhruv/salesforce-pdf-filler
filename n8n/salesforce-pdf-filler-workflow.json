@@ -1,0 +1,206 @@
+{
+  "name": "Salesforce Multi-Form → PDF Filler",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "On New Salesforce Lead",
+      "type": "n8n-nodes-base.salesforceTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {
+        "trigger": "updated",
+        "resource": "lead"
+      }
+    },
+    {
+      "id": "manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 500],
+      "parameters": {}
+    },
+    {
+      "id": "set_lead_id",
+      "name": "Set Lead ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 500],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "lead_id_field",
+              "name": "leadId",
+              "value": "={{ $json.Id || '00Q000000000000' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "get_lead",
+      "name": "Get Lead Details",
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [750, 400],
+      "parameters": {
+        "operation": "get",
+        "resource": "lead",
+        "leadId": "={{ $json.leadId || $json.Id }}"
+      }
+    },
+    {
+      "id": "merge_data",
+      "name": "Merge SF Data to PDF Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 400],
+      "parameters": {
+        "jsCode": "// Merge Salesforce objects into flat JSON matching PDF field names\n// Edit the mapping below to match YOUR PDF template fields\n\nconst lead = $input.first().json;\n\n// Field mapping: PDF field name -> Salesforce value\n// Run 'python run.py discover templates/your.pdf' to see your PDF's actual field names\nconst pdfData = {\n  // Lead fields\n  firstName: lead.FirstName || '',\n  lastName: lead.LastName || '',\n  email: lead.Email || '',\n  phone: lead.Phone || '',\n  company: lead.Company || '',\n  address: lead.Street || '',\n  city: lead.City || '',\n  state: lead.State || '',\n  zipCode: lead.PostalCode || '',\n  country: lead.Country || '',\n  jobTitle: lead.Title || '',\n  notes: lead.Description || '',\n  submissionDate: new Date().toISOString().split('T')[0],\n\n  // Add Opportunity fields (uncomment and add a Salesforce node to fetch):\n  // dealAmount: opportunity?.Amount?.toString() || '',\n  // closeDate: opportunity?.CloseDate || '',\n  // dealStage: opportunity?.StageName || '',\n\n  // Add Account fields:\n  // accountName: account?.Name || '',\n  // accountCity: account?.BillingCity || '',\n\n  // Add Custom Object fields:\n  // customField1: customRecord?.Custom_Field__c || '',\n};\n\nreturn [{ json: { data: pdfData, leadId: lead.Id } }];"
+      }
+    },
+    {
+      "id": "fill_pdf",
+      "name": "Fill PDF via API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8100/fill/raw",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ data: $json.data, return_base64: true }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "notes": "Calls the Python FastAPI server. Start it with: python run.py serve"
+    },
+    {
+      "id": "check_success",
+      "name": "Check Fill Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1600, 400],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "success_check",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "convert_pdf",
+      "name": "Convert Base64 to File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 300],
+      "parameters": {
+        "jsCode": "// Convert base64 PDF to binary file for email/upload\nconst base64Data = $input.first().json.pdf_base64;\nconst filename = $input.first().json.filename || 'filled_form.pdf';\nconst coverage = $input.first().json.coverage;\n\nreturn [{\n  json: {\n    filename,\n    coverage,\n    message: `PDF filled successfully. Coverage: ${coverage?.coverage_pct || 0}%`\n  },\n  binary: {\n    data: {\n      data: base64Data,\n      mimeType: 'application/pdf',\n      fileName: filename,\n      fileExtension: 'pdf'\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "send_email",
+      "name": "Email Filled PDF",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2150, 300],
+      "parameters": {
+        "sendTo": "={{ $('Merge SF Data to PDF Fields').first().json.data.email }}",
+        "subject": "Your Filled Form",
+        "message": "Hi,\n\nPlease find your filled form attached.\n\nBest regards",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "binaryPropertyName": "data"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "error_handler",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 500],
+      "parameters": {
+        "jsCode": "// Log the error for debugging\nconst errorData = $input.first().json;\nconsole.log('PDF Fill Error:', JSON.stringify(errorData));\n\nreturn [{\n  json: {\n    status: 'error',\n    message: 'PDF filling failed. Check the API server logs.',\n    raw: errorData\n  }\n}];"
+      }
+    },
+    {
+      "id": "sticky_instructions",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [200, 100],
+      "parameters": {
+        "content": "## Salesforce to PDF Filler\n\n**Setup:**\n1. Start Python API: cd salesforce-pdf-filler && python run.py serve\n2. Place PDF template in templates/ folder\n3. Run python run.py discover templates/your.pdf to see field names\n4. Edit the Code node mapping to match your PDF fields\n5. Configure Salesforce credentials in n8n\n\n**Two triggers:**\n- Auto: Salesforce Trigger (on Lead create/update)\n- Manual: Click Test workflow with a Lead ID\n\n**API Endpoints:**\n- POST /fill - Fill from Salesforce IDs\n- POST /fill/raw - Fill from raw JSON\n- GET /discover - List PDF fields\n- GET /health - Health check",
+        "width": 400,
+        "height": 300,
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "On New Salesforce Lead": {
+      "main": [[{"node": "Get Lead Details", "type": "main", "index": 0}]]
+    },
+    "Manual Trigger": {
+      "main": [[{"node": "Set Lead ID", "type": "main", "index": 0}]]
+    },
+    "Set Lead ID": {
+      "main": [[{"node": "Get Lead Details", "type": "main", "index": 0}]]
+    },
+    "Get Lead Details": {
+      "main": [[{"node": "Merge SF Data to PDF Fields", "type": "main", "index": 0}]]
+    },
+    "Merge SF Data to PDF Fields": {
+      "main": [[{"node": "Fill PDF via API", "type": "main", "index": 0}]]
+    },
+    "Fill PDF via API": {
+      "main": [[{"node": "Check Fill Success", "type": "main", "index": 0}]]
+    },
+    "Check Fill Success": {
+      "main": [
+        [{"node": "Convert Base64 to File", "type": "main", "index": 0}],
+        [{"node": "Log Error", "type": "main", "index": 0}]
+      ]
+    },
+    "Convert Base64 to File": {
+      "main": [[{"node": "Email Filled PDF", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  }
+}

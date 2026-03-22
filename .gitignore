@@ -1,0 +1,22 @@
+# Environment
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Output
+output/
+data/run_log.json
+data/run_log.md
+
+# Templates (user-specific)
+templates/*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
