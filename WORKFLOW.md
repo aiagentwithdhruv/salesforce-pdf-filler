@@ -4,8 +4,9 @@
 > **Context:** Euron Future Proof AI Automation Bootcamp student
 > **Ask:** Read data from multiple Salesforce forms → populate a single fillable PDF
 > **Status:** BUILT (Python + FastAPI + n8n workflow)
-> **n8n Workflow ID:** `JRgbD1qPFmTjb9tJ` (11 nodes, inactive — activate after SF credentials configured)
-> **n8n Link:** https://n8n.aiwithdhruv.cloud/workflow/JRgbD1qPFmTjb9tJ
+> **n8n Workflow ID:** `AD95jYztsvMzkPsD` (11 nodes, inactive — activate after SF credentials configured)
+> **n8n Link:** https://n8n.aiwithdhruv.cloud/workflow/AD95jYztsvMzkPsD
+> **GitHub:** https://github.com/aiagentwithdhruv/salesforce-pdf-filler
 
 ---
 
