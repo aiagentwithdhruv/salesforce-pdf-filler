@@ -278,13 +278,73 @@ python run.py serve  # Runs on http://localhost:8100
 
 ## Making It Live (Production Deployment)
 
-Two clear paths. Pick one.
+This repo gives you **two independent methods**. Each has its own deployment path. You can use one or both.
+
+| Method | What It Is | Needs Server? | Best For |
+|--------|-----------|---------------|----------|
+| **Method 1: Python** | CLI + FastAPI API | Yes (deploy on a VPS) | Full control, batch processing, complex logic |
+| **Method 2: n8n Only** | Import JSON workflow | No (just your existing n8n) | Quick setup, visual, no coding |
 
 ---
 
-### Path A: Already Have n8n or Any VPS? Deploy on the Same Server ($0 Extra)
+### Deploying Method 2: n8n Workflow (No Extra Server Needed)
 
-If you already have a server running n8n (or anything else), just add the API there. No extra cost.
+**If you already have n8n running (self-hosted or cloud), this is the fastest path. No server, no Python, no Docker.**
+
+The n8n workflow uses Salesforce nodes + a Code node to do everything inside n8n itself. You just need to install one free community node for PDF filling.
+
+**Step 1: Install the PDF community node in your n8n**
+- Go to **Settings → Community Nodes → Install**
+- Search for `n8n-nodes-doc-filler` and install it
+- This gives you 3 nodes: `Doc Get Form Fields`, `Doc Fill`, `Doc Create Field`
+
+**Step 2: Import the workflow**
+- Go to **Workflows → Import from File**
+- Select `n8n/salesforce-pdf-filler-workflow.json` from this repo
+
+**Step 3: Add your Salesforce credentials**
+- Go to **Settings → Credentials → Add New → Salesforce OAuth2**
+- Create a Connected App in Salesforce Setup
+- Paste Consumer Key + Consumer Secret
+- Authorize the connection
+
+**Step 4: Upload your PDF template**
+- In the workflow, find the **"Fill PDF via API"** node
+- Replace it with the **"Doc Fill"** community node
+- Upload your blank PDF template directly in the node
+- Map the fields in the node config (JSON format):
+```json
+[
+  {"key": "firstName", "value": "={{ $json.data.firstName }}", "type": "textfield"},
+  {"key": "lastName", "value": "={{ $json.data.lastName }}", "type": "textfield"},
+  {"key": "email", "value": "={{ $json.data.email }}", "type": "textfield"},
+  {"key": "company", "value": "={{ $json.data.company }}", "type": "textfield"}
+]
+```
+
+**Step 5: Edit the field mapping in the Code node**
+- Open the **"Merge SF Data to PDF Fields"** Code node
+- Change the field names to match YOUR Salesforce fields and YOUR PDF field names
+
+**Step 6: Activate**
+- Click the toggle to activate the workflow
+- Every new Salesforce Lead will auto-generate a filled PDF and email it
+
+**Done. No Python, no server, no Docker. Just n8n.**
+
+> **Note:** The `n8n-nodes-doc-filler` community node only works on **self-hosted n8n**. If you're on n8n Cloud and community nodes aren't available, use Method 1 (Python) instead.
+
+---
+
+### Deploying Method 1: Python Engine (Needs a Server)
+
+The Python engine gives you the CLI, the FastAPI API, batch processing, auto-suggest mapping, and upload-back-to-Salesforce. It needs to run on a server.
+
+**Two options depending on what you already have:**
+
+#### Option A: Already Have a VPS or n8n Server? ($0 Extra)
+
+Deploy on the same server. No extra cost.
 
 **Step 1: SSH into your server and clone**
 ```bash
@@ -311,10 +371,19 @@ cp /path/to/your/form.pdf templates/
 **Step 4: Discover PDF field names and set up mapping**
 ```bash
 python run.py discover templates/form.pdf --save
-# Edit data/field_map.json to map your Salesforce fields to the PDF field names
+# Now edit data/field_map.json — map your Salesforce fields to the PDF field names you just discovered
 ```
 
-**Step 5: Set up as a system service (auto-starts on boot, auto-restarts on crash)**
+**Step 5: Test it works**
+```bash
+# Dry run (shows what would be filled, doesn't write PDF)
+python run.py fill --lead-id YOUR_LEAD_ID --dry-run
+
+# Actual fill
+python run.py fill --lead-id YOUR_LEAD_ID
+```
+
+**Step 6: Set up as a system service (auto-starts on boot, auto-restarts on crash)**
 ```bash
 sudo tee /etc/systemd/system/sf-pdf-filler.service << 'EOF'
 [Unit]
@@ -338,27 +407,22 @@ sudo systemctl enable sf-pdf-filler
 sudo systemctl start sf-pdf-filler
 ```
 
-**Step 6: Verify it's running**
+**Step 7: Verify the API is running**
 ```bash
 curl http://localhost:8100/health
 # Should return: {"status": "ok", "service": "salesforce-pdf-filler"}
 ```
 
-**Step 7: Connect n8n**
-- Open the n8n workflow (import `n8n/salesforce-pdf-filler-workflow.json`)
-- The HTTP Request node already points to `http://localhost:8100` — no change needed since it's on the same server
-- Add your Salesforce credentials in n8n
-- Activate the workflow
+**Step 8 (optional): Connect n8n for auto-trigger**
+- Import `n8n/salesforce-pdf-filler-workflow.json` into your n8n
+- The HTTP Request node already points to `http://localhost:8100` — no change needed if n8n is on the same server
+- Add Salesforce credentials in n8n and activate
 
-**Done.** Every new Salesforce Lead auto-generates a filled PDF and emails it. Zero manual work.
+**Done.** API runs 24/7. Use CLI for manual/batch fills, or n8n for auto-trigger on new leads.
 
----
+#### Option B: Don't Have a Server? Use Docker on a VPS ($4-6/mo)
 
-### Path B: Don't Have a Server? Use Docker on a VPS ($4-6/mo)
-
-Get a cheap VPS, deploy with Docker, done forever.
-
-**Step 1: Get a VPS (pick one)**
+**Step 1: Get a VPS**
 
 | Provider | Cost | What You Get |
 |----------|------|-------------|
@@ -366,23 +430,19 @@ Get a cheap VPS, deploy with Docker, done forever.
 | **Hetzner CAX11** | ~$4/mo | 2 cores, 4GB RAM (best budget) |
 | **DigitalOcean** | $6/mo | 1 core, 1GB RAM |
 
-**Step 2: SSH in and deploy**
+**Step 2: Deploy with Docker**
 ```bash
 ssh root@your-new-server
 
-# Install Docker (if not installed)
+# Install Docker
 curl -fsSL https://get.docker.com | sh
 
-# Clone the repo
+# Clone and configure
 git clone https://github.com/aiagentwithdhruv/salesforce-pdf-filler.git
 cd salesforce-pdf-filler
-
-# Add your credentials
 cp .env.example .env
-nano .env
-
-# Drop your PDF template
-cp /path/to/your/form.pdf templates/
+nano .env                           # Add your Salesforce credentials
+cp /path/to/form.pdf templates/     # Add your PDF template
 
 # Build and run
 docker build -t sf-pdf-filler .
@@ -395,32 +455,28 @@ docker run -d --name sf-pdf-filler \
   sf-pdf-filler
 ```
 
-**Step 3: Verify**
+**Step 3: Verify and connect**
 ```bash
-curl http://localhost:8100/health
+curl http://YOUR_SERVER_IP:8100/health
 ```
-
-**Step 4: Connect n8n**
-- Update the HTTP Request node URL in the n8n workflow to `http://YOUR_SERVER_IP:8100/fill/raw`
-- Add Salesforce credentials in n8n
-- Activate
+Then update the n8n workflow's HTTP Request node URL to `http://YOUR_SERVER_IP:8100/fill/raw` and activate.
 
 ---
 
-### Making It Fully Automated (Both Paths)
+### Making It Fully Automated
 
-Once deployed, choose your automation trigger:
+Once deployed (any method above), choose your trigger:
 
-**Real-time (recommended):** Activate the n8n Salesforce Trigger → every new Lead auto-fills a PDF and emails it. Zero manual work.
+**Real-time (recommended):** Activate the n8n Salesforce Trigger → every new Lead auto-fills a PDF and emails it. Zero manual work after setup.
 
-**Scheduled batch:** Add a cron job to process all new leads daily:
+**Scheduled batch (Python only):**
 ```bash
+# Add to crontab — process all new leads every day at 9 AM
 crontab -e
-# Every day at 9 AM
 0 9 * * * cd /root/salesforce-pdf-filler && python run.py batch --since today
 ```
 
-**On-demand:** Any system can POST to `http://your-server:8100/fill` and get a filled PDF back instantly
+**On-demand (Python only):** Any system can POST to `http://your-server:8100/fill` and get a filled PDF back instantly.
 
 ---
 
